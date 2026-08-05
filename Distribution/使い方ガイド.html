@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PDFBinder 使い方ガイド</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --accent: #5b5ce2;
+      --accent-dark: #4041b8;
+      --accent-soft: #eef0ff;
+      --warm: #ffb648;
+      --ink: #252736;
+      --muted: #626779;
+      --line: #dde0eb;
+      --surface: #ffffff;
+      --background: #f7f8fc;
+      --success: #157347;
+      --warning-bg: #fff8e8;
+      --warning-line: #f3c968;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      width: 80%;
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 36px 0 56px;
+      background: var(--background);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic UI", sans-serif;
+      font-size: 16px;
+      line-height: 1.75;
+      letter-spacing: 0.015em;
+    }
+
+    header,
+    main,
+    footer {
+      width: 100%;
+    }
+
+    .hero {
+      display: grid;
+      grid-template-columns: 112px 1fr;
+      gap: 28px;
+      align-items: center;
+      padding: 34px;
+      border: 1px solid var(--line);
+      border-radius: 24px;
+      background: linear-gradient(135deg, #ffffff 0%, #f0f1ff 100%);
+      box-shadow: 0 18px 45px rgba(49, 52, 110, 0.10);
+    }
+
+    .app-icon {
+      display: block;
+      width: 112px;
+      height: 112px;
+      border-radius: 25px;
+      box-shadow: 0 12px 28px rgba(49, 49, 120, 0.24);
+    }
+
+    h1,
+    h2,
+    h3 {
+      margin-top: 0;
+      line-height: 1.35;
+      letter-spacing: 0;
+    }
+
+    h1 {
+      margin-bottom: 8px;
+      font-size: clamp(2rem, 5vw, 3rem);
+    }
+
+    h2 {
+      margin-bottom: 18px;
+      font-size: 1.65rem;
+    }
+
+    h3 {
+      margin-bottom: 8px;
+      font-size: 1.08rem;
+    }
+
+    p {
+      margin: 0 0 14px;
+    }
+
+    .lead {
+      max-width: 760px;
+      margin: 0;
+      color: var(--muted);
+      font-size: 1.08rem;
+    }
+
+    .badge-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 16px;
+    }
+
+    .badge {
+      padding: 4px 11px;
+      border: 1px solid #d3d6ff;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent-dark);
+      font-size: 0.84rem;
+      font-weight: 650;
+    }
+
+    nav {
+      margin: 26px 0;
+      padding: 16px 22px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--surface);
+    }
+
+    nav ul {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 22px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    nav a {
+      color: var(--accent-dark);
+      font-weight: 650;
+      text-decoration: none;
+    }
+
+    nav a:hover {
+      text-decoration: underline;
+    }
+
+    section {
+      margin-bottom: 26px;
+      padding: 30px;
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      background: var(--surface);
+    }
+
+    .steps {
+      display: grid;
+      gap: 14px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      counter-reset: step;
+    }
+
+    .steps li {
+      position: relative;
+      min-height: 54px;
+      padding: 13px 16px 13px 72px;
+      border-radius: 14px;
+      background: #f8f9fd;
+      counter-increment: step;
+    }
+
+    .steps li::before {
+      position: absolute;
+      top: 12px;
+      left: 16px;
+      display: grid;
+      width: 40px;
+      height: 40px;
+      place-items: center;
+      border-radius: 50%;
+      background: var(--accent);
+      color: white;
+      content: counter(step);
+      font-weight: 750;
+    }
+
+    .notice {
+      margin-top: 18px;
+      padding: 15px 18px;
+      border: 1px solid var(--warning-line);
+      border-radius: 12px;
+      background: var(--warning-bg);
+    }
+
+    .notice strong {
+      color: #765400;
+    }
+
+    .success {
+      padding: 13px 16px;
+      border-left: 4px solid #41a879;
+      border-radius: 8px;
+      background: #edf9f3;
+      color: var(--success);
+    }
+
+    figure {
+      margin: 22px 0 8px;
+    }
+
+    figure img {
+      display: block;
+      width: 100%;
+      height: auto;
+      border: 1px solid #cfd2de;
+      border-radius: 14px;
+      background: #ececf1;
+      box-shadow: 0 14px 30px rgba(37, 39, 54, 0.12);
+    }
+
+    figcaption {
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 0.9rem;
+      text-align: center;
+    }
+
+    .control-grid,
+    .option-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 18px;
+    }
+
+    .control,
+    .option {
+      padding: 17px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #fbfbfe;
+    }
+
+    .symbol {
+      display: inline-grid;
+      min-width: 34px;
+      height: 34px;
+      margin-right: 7px;
+      padding: 0 8px;
+      place-items: center;
+      border-radius: 9px;
+      background: var(--accent-soft);
+      color: var(--accent-dark);
+      font-weight: 800;
+    }
+
+    .control p,
+    .option p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.94rem;
+    }
+
+    kbd {
+      display: inline-block;
+      min-width: 1.8em;
+      padding: 1px 7px;
+      border: 1px solid #c8cad2;
+      border-bottom-width: 2px;
+      border-radius: 6px;
+      background: #fff;
+      color: #343743;
+      font-family: inherit;
+      font-size: 0.88em;
+      text-align: center;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th,
+    td {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      width: 28%;
+      color: var(--accent-dark);
+    }
+
+    code {
+      padding: 2px 6px;
+      border-radius: 5px;
+      background: #f0f1f5;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.9em;
+    }
+
+    footer {
+      padding: 18px 8px 0;
+      color: var(--muted);
+      font-size: 0.88rem;
+      text-align: center;
+    }
+
+    @media (max-width: 820px) {
+      body {
+        width: 95%;
+        padding-top: 18px;
+      }
+
+      .hero {
+        grid-template-columns: 76px 1fr;
+        gap: 18px;
+        padding: 24px;
+      }
+
+      .app-icon {
+        width: 76px;
+        height: 76px;
+        border-radius: 18px;
+      }
+
+      section {
+        padding: 22px;
+      }
+
+      .control-grid,
+      .option-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 520px) {
+      .hero {
+        grid-template-columns: 1fr;
+      }
+
+      th,
+      td {
+        display: block;
+        width: 100%;
+      }
+
+      th {
+        padding-bottom: 2px;
+        border-bottom: 0;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <img class="app-icon" src="guide-assets/app-icon.png" alt="PDFBinderのアプリアイコン">
+    <div>
+      <h1>PDFBinder 使い方ガイド</h1>
+      <p class="lead">画像とPDFを好きな順に並べ、プレビューを確認しながら、ひとつのPDFへまとめるmacOSアプリです。</p>
+      <div class="badge-row" aria-label="対応情報">
+        <span class="badge">macOS 14以降</span>
+        <span class="badge">Intel / Apple Silicon</span>
+        <span class="badge">ローカル処理</span>
+      </div>
+    </div>
+  </header>
+
+  <nav aria-label="目次">
+    <ul>
+      <li><a href="#install">インストール</a></li>
+      <li><a href="#screen">画面の見方</a></li>
+      <li><a href="#merge">PDFを作る</a></li>
+      <li><a href="#page-size">画像ページ設定</a></li>
+      <li><a href="#tips">ヒント</a></li>
+      <li><a href="#trouble">困ったとき</a></li>
+    </ul>
+  </nav>
+
+  <main>
+    <article>
+      <section id="install">
+        <h2>1. インストールと初回起動</h2>
+        <ol class="steps">
+          <li>DMGを開き、<strong>PDFBinder.app</strong> を <strong>Applications</strong> フォルダへドラッグします。</li>
+          <li>コピー完了後、DMG内の <strong>PDFBinder 初回起動準備.app</strong> を開きます。</li>
+          <li>確認画面で「解除して起動」を選びます。管理者認証が表示された場合は、MacのパスワードまたはTouch IDで許可します。</li>
+          <li>次回からは「アプリケーション」フォルダの <strong>PDFBinder</strong> を通常どおり開けます。</li>
+        </ol>
+        <div class="notice">
+          <strong>初回起動準備アプリ自体を開けない場合：</strong>
+          Finderで「PDFBinder 初回起動準備.app」をControlキーを押しながらクリックし、「開く」→「開く」を選んでください。
+        </div>
+        <p class="success">初回起動準備はPDFBinderだけの隔離属性を削除します。Mac全体のGatekeeper機能を無効化するものではありません。</p>
+      </section>
+
+      <section id="screen">
+        <h2>2. 画面の見方</h2>
+        <p>左側が結合するファイルの一覧、右側が完成PDFのプレビューです。ファイルを追加するとプレビューが自動更新されます。</p>
+        <figure>
+          <img src="guide-assets/app-main.png" alt="ファイルがまだ追加されていないPDFBinderのメイン画面">
+          <figcaption>起動直後の画面。中央のボタン、ツールバーの「＋」、ドラッグ＆ドロップのいずれでも追加できます。</figcaption>
+        </figure>
+        <div class="control-grid">
+          <div class="control">
+            <h3><span class="symbol">＋</span>ファイルを追加</h3>
+            <p>画像またはPDFを複数選択できます。ショートカットは <kbd>⌘</kbd> <kbd>O</kbd> です。</p>
+          </div>
+          <div class="control">
+            <h3><span class="symbol">−</span>選択を削除</h3>
+            <p>左の一覧で選択したファイルだけを、結合対象から取り除きます。</p>
+          </div>
+          <div class="control">
+            <h3><span class="symbol">⇅</span>並び替え</h3>
+            <p>名前・更新日時・サイズで並べ替えます。行をドラッグして手動調整もできます。</p>
+          </div>
+          <div class="control">
+            <h3><span class="symbol">⇧</span>PDFを作成</h3>
+            <p>右上の書き出しボタンです。ショートカットは <kbd>⌘</kbd> <kbd>S</kbd> です。</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="merge">
+        <h2>3. 画像とPDFをひとつにまとめる</h2>
+        <ol class="steps">
+          <li>画像・PDFをウィンドウへドラッグするか、左上の「＋」から選びます。</li>
+          <li>左の一覧で、ファイルを完成PDFにしたい順へドラッグします。表示されている番号が結合順です。</li>
+          <li>右側のプレビューで、ページの順番と見え方を確認します。</li>
+          <li>右上の書き出しボタンを押し、ファイル名と保存先を選びます。</li>
+          <li>「書き出し完了」が表示されたら完成です。「Finderで表示」から保存場所を確認できます。</li>
+        </ol>
+        <figure>
+          <img src="guide-assets/app-files-added.png" alt="画像とPDFを3件追加し、完成PDFをプレビューしているPDFBinderの画面">
+          <figcaption>画像とPDFを混在させた例。左の順番どおりに、右側へ結合結果が表示されます。</figcaption>
+        </figure>
+      </section>
+
+      <section id="page-size">
+        <h2>4. 画像ページの大きさを選ぶ</h2>
+        <p>ツールバーの「A4に収める」メニューから、画像をPDFページへ配置する方法を選択できます。元からPDFのファイルは変更されません。</p>
+        <div class="option-grid">
+          <div class="option">
+            <h3>A4に収める（おすすめ）</h3>
+            <p>縦向きA4ページの中央へ、画像全体が切れないよう比率を保って配置します。写真やスキャン画像のサイズを揃えたい場合に適しています。</p>
+          </div>
+          <div class="option">
+            <h3>原寸</h3>
+            <p>画像が持つ大きさをそのままPDFページにします。画像ごとのページ寸法を維持したい場合に使用します。</p>
+          </div>
+        </div>
+      </section>
+
+      <section id="tips">
+        <h2>5. 対応形式と便利な操作</h2>
+        <table>
+          <tbody>
+            <tr>
+              <th>対応ファイル</th>
+              <td>PDF、PNG、JPEG、HEICなど、macOSが画像として認識する形式</td>
+            </tr>
+            <tr>
+              <th>複数選択</th>
+              <td>ファイル選択画面で <kbd>⌘</kbd> を押しながらクリックします。</td>
+            </tr>
+            <tr>
+              <th>選択削除</th>
+              <td>左の一覧で選択後、Deleteキーまたはツールバーの「−」を使います。元ファイルは削除されません。</td>
+            </tr>
+            <tr>
+              <th>同じファイル</th>
+              <td>同じファイルを複数回追加できます。同じページを繰り返したい場合に利用できます。</td>
+            </tr>
+            <tr>
+              <th>プライバシー</th>
+              <td>結合処理はMac内で完結し、ファイルを外部サービスへ送信しません。</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="trouble">
+        <h2>6. 困ったとき</h2>
+        <table>
+          <tbody>
+            <tr>
+              <th>「開発元を確認できない」と表示される</th>
+              <td>PDFBinderをApplicationsへコピーした後、DMG内の「PDFBinder 初回起動準備.app」を実行してください。</td>
+            </tr>
+            <tr>
+              <th>初回起動準備でアプリが見つからない</th>
+              <td>表示される「アプリを選択…」から、コピーしたPDFBinder.appを選択してください。Bundle IDを確認してから安全に処理します。</td>
+            </tr>
+            <tr>
+              <th>ファイルを追加できない</th>
+              <td>ファイルがPDFまたは画像形式か、読み取り権限があるかを確認してください。</td>
+            </tr>
+            <tr>
+              <th>プレビュー更新に時間がかかる</th>
+              <td>ページ数や画像サイズが大きい場合は処理に時間がかかります。更新中の表示が消えるまでお待ちください。</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+    </article>
+  </main>
+
+  <footer>
+    <p>PDFBinder 1.0.1 / macOS 14以降</p>
+  </footer>
+</body>
+</html>
