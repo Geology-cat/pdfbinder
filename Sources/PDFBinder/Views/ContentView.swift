@@ -67,17 +67,21 @@ struct ContentView: View {
             .disabled(viewModel.selection.isEmpty)
             .help("選択したファイルをリストから削除")
 
+            Button {
+                viewModel.clearAll()
+            } label: {
+                Label("すべてクリア", systemImage: "trash")
+            }
+            .disabled(viewModel.items.isEmpty)
+            .help("読み込んだすべてのファイルをリストから削除（元ファイルは削除しません）")
+
             Menu {
                 ForEach(SortOption.allCases) { option in
-                    Button(option.rawValue) {
-                        viewModel.sort(by: option)
-                    }
+                    Toggle(
+                        option.rawValue,
+                        isOn: sortSelectionBinding(for: option)
+                    )
                 }
-                Divider()
-                Button("すべて削除", role: .destructive) {
-                    viewModel.removeAll()
-                }
-                .disabled(viewModel.items.isEmpty)
             } label: {
                 Label("並び替え", systemImage: "arrow.up.arrow.down")
             }
@@ -107,6 +111,18 @@ struct ContentView: View {
             .disabled(viewModel.items.isEmpty || viewModel.isExporting)
             .help("結合したPDFを保存")
         }
+    }
+
+    /// 選択中のソート順だけにチェックマークを表示するためのBinding
+    private func sortSelectionBinding(for option: SortOption) -> Binding<Bool> {
+        Binding(
+            get: { viewModel.selectedSortOption == option },
+            set: { isSelected in
+                if isSelected {
+                    viewModel.sort(by: option)
+                }
+            }
+        )
     }
 }
 

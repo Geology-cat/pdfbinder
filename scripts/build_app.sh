@@ -48,4 +48,11 @@ plutil -lint "${CONTENTS_DIR}/Info.plist" >/dev/null
 codesign --force --deep --sign - --identifier jp.pdfbinder.app "${APP_DIR}"
 codesign --verify --deep --strict "${APP_DIR}"
 
+# 同じ出力先へ再ビルドした場合でも、Finderが最新のアイコン情報を使うように
+# アプリバンドルをLaunch Servicesへ強制再登録する。
+LSREGISTER="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
+if [[ -x "${LSREGISTER}" ]]; then
+    "${LSREGISTER}" -f "${APP_DIR}"
+fi
+
 echo "ビルド完了: ${APP_DIR}"

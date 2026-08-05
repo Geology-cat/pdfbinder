@@ -5,7 +5,8 @@
 ## 主な機能
 
 - 画像（PNG / JPEG / HEIC など）とPDFの複数読み込み（ファイル選択・ドラッグ＆ドロップ、追加時は名前の昇順）
-- ドラッグによる自由な並び替え＋名前・更新日時・サイズでのソート（ソート後の手動並び替えも可能）
+- 読み込んだファイルをツールバーから一括クリア（元ファイルは削除しない）
+- ドラッグによる自由な並び替え＋選択中の項目にチェックが付くソートメニュー
 - 結合結果のライブプレビュー
 - 画像ページを「原寸」（初期値）／「A4に収める」から選択
 - 進捗ウインドウを表示しながら1つのPDFとして書き出し
@@ -41,7 +42,7 @@ swift test
 ./scripts/build_dmg.sh
 ```
 
-`dist/PDFBinder-1.0.1.dmg` が生成されます。DMGにはUniversal版アプリ、使い方ガイド、初回起動準備AppleScript、Applicationsフォルダへのショートカットが含まれます。
+`dist/PDFBinder-1.0.2.dmg` が生成されます。DMGにはUniversal版アプリ、使い方ガイド、初回起動準備AppleScript、Applicationsフォルダへのショートカットが含まれます。
 
 初回起動準備AppleScriptは、`/Applications/PDFBinder.app` の隔離属性だけを解除します。Mac全体のGatekeeper設定は変更しません。
 

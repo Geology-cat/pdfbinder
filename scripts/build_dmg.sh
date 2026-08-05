@@ -4,7 +4,7 @@ set -euo pipefail
 # PDFBinder.app、使い方ガイド、初回起動準備AppleScriptを配布用DMGへまとめる。
 SCRIPT_DIR="${0:A:h}"
 PROJECT_DIR="${SCRIPT_DIR:h}"
-VERSION="1.0.1"
+VERSION="1.0.2"
 VOLUME_NAME="PDFBinder ${VERSION}"
 OUTPUT_DIR="${PROJECT_DIR}/dist"
 FINAL_DMG="${OUTPUT_DIR}/PDFBinder-${VERSION}.dmg"
@@ -59,7 +59,7 @@ done
 /usr/libexec/PlistBuddy -c "Add :CFBundleIdentifier string jp.pdfbinder.firstlaunch" "${HELPER_PLIST}"
 /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string PDFBinder 初回起動準備" "${HELPER_PLIST}"
 /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string ${VERSION}" "${HELPER_PLIST}"
-/usr/libexec/PlistBuddy -c "Add :CFBundleVersion string 1" "${HELPER_PLIST}"
+/usr/libexec/PlistBuddy -c "Add :CFBundleVersion string 3" "${HELPER_PLIST}"
 /usr/libexec/PlistBuddy -c "Add :LSMinimumSystemVersion string 14.0" "${HELPER_PLIST}"
 /usr/libexec/PlistBuddy -c "Set :NSSystemAdministrationUsageDescription PDFBinderの隔離属性を解除するために管理者認証を使用します。" "${HELPER_PLIST}"
 

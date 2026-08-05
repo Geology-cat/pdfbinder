@@ -43,7 +43,44 @@ final class PDFBinderTests: XCTestCase {
         viewModel.addFiles(urls: [ten, two, one])
 
         XCTAssertEqual(viewModel.items.map(\.fileName), ["1.png", "2.png", "10.png"])
-        viewModel.removeAll()
+        viewModel.clearAll()
+    }
+
+    @MainActor
+    func testソート順の選択状態が並び替え操作に追従する() throws {
+        let one = try makeImageFile(name: "1.png", size: CGSize(width: 100, height: 100))
+        let two = try makeImageFile(name: "2.png", size: CGSize(width: 100, height: 100))
+        let viewModel = MergeListViewModel()
+
+        viewModel.addFiles(urls: [one, two])
+        XCTAssertEqual(viewModel.selectedSortOption, .nameAscending)
+
+        viewModel.sort(by: .nameDescending)
+
+        XCTAssertEqual(viewModel.selectedSortOption, .nameDescending)
+        XCTAssertEqual(viewModel.items.map(\.fileName), ["2.png", "1.png"])
+
+        viewModel.move(from: IndexSet(integer: 0), to: 2)
+
+        XCTAssertNil(viewModel.selectedSortOption)
+        viewModel.clearAll()
+    }
+
+    @MainActor
+    func testすべてクリアで読み込み内容と選択を消去する() throws {
+        let one = try makeImageFile(name: "1.png", size: CGSize(width: 100, height: 100))
+        let two = try makeImageFile(name: "2.png", size: CGSize(width: 100, height: 100))
+        let viewModel = MergeListViewModel()
+        viewModel.addFiles(urls: [one, two])
+        viewModel.selection = Set(viewModel.items.map(\.id))
+        viewModel.sort(by: .nameDescending)
+
+        viewModel.clearAll()
+
+        XCTAssertTrue(viewModel.items.isEmpty)
+        XCTAssertTrue(viewModel.selection.isEmpty)
+        XCTAssertNil(viewModel.previewDocument)
+        XCTAssertEqual(viewModel.selectedSortOption, .nameAscending)
     }
 
     @MainActor

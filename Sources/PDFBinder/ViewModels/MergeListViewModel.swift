@@ -15,6 +15,9 @@ final class MergeListViewModel: ObservableObject {
     /// リストでの選択状態
     @Published var selection: Set<UUID> = []
 
+    /// 並び替えメニューで現在選択されているソート順
+    @Published private(set) var selectedSortOption: SortOption? = .nameAscending
+
     /// プレビュー用に合成したPDF（itemsが空のときはnil）
     @Published private(set) var previewDocument: PDFDocument?
 
@@ -55,6 +58,7 @@ final class MergeListViewModel: ObservableObject {
     func addFiles(urls: [URL]) {
         var added: [SourceItem] = []
         var skipped: [String] = []
+        let wasEmpty = items.isEmpty
 
         for url in urls {
             if let item = SourceItem.make(from: url) {
@@ -68,6 +72,10 @@ final class MergeListViewModel: ObservableObject {
         // 1回の操作で追加したファイルをFinderと同じ自然な名前順にそろえる。
         // 追加済みファイルの手動並び替えは維持するため、新しいまとまりだけをソートする。
         items.append(contentsOf: SortOption.nameAscending.sorted(added))
+        if !added.isEmpty {
+            // 既存リストへ追加した場合、リスト全体としては特定のソート順ではなくなる。
+            selectedSortOption = wasEmpty ? .nameAscending : nil
+        }
 
         if !skipped.isEmpty {
             errorMessage = "対応していない形式のためスキップしました：\n" + skipped.joined(separator: "\n")
@@ -94,10 +102,11 @@ final class MergeListViewModel: ObservableObject {
         selection.removeAll()
     }
 
-    /// すべてのアイテムを削除する
-    func removeAll() {
+    /// 読み込んだすべてのアイテムをリストからクリアする（元ファイルは削除しない）
+    func clearAll() {
         items.removeAll()
         selection.removeAll()
+        selectedSortOption = .nameAscending
         ThumbnailService.shared.clearCache()
     }
 
@@ -106,10 +115,12 @@ final class MergeListViewModel: ObservableObject {
     /// ドラッグによる手動並び替え（ListのonMoveから呼ばれる）
     func move(from source: IndexSet, to destination: Int) {
         items.move(fromOffsets: source, toOffset: destination)
+        selectedSortOption = nil
     }
 
     /// 指定のソート方法で並び替える。並び替え後も手動での移動は可能
     func sort(by option: SortOption) {
+        selectedSortOption = option
         items = option.sorted(items)
     }
 
