@@ -1,6 +1,52 @@
 import AppKit
 import PDFKit
 
+/// PDF書き出し処理の進行状況
+struct PDFExportProgress: Sendable, Equatable {
+    enum Phase: Sendable, Equatable {
+        case composing
+        case writing
+        case completed
+    }
+
+    let phase: Phase
+    let completedPages: Int
+    let totalPages: Int
+
+    /// PDFファイルの書き込みを最後の1作業単位として扱った進捗率
+    var fractionCompleted: Double {
+        let pageCount = max(totalPages, 0)
+        let totalUnitCount = max(pageCount + 1, 1)
+
+        switch phase {
+        case .composing:
+            return Double(min(max(completedPages, 0), pageCount)) / Double(totalUnitCount)
+        case .writing:
+            return Double(pageCount) / Double(totalUnitCount)
+        case .completed:
+            return 1
+        }
+    }
+
+    /// 進捗ウインドウに表示する説明
+    var statusText: String {
+        switch phase {
+        case .composing where completedPages == 0:
+            return "結合の準備中…"
+        case .composing:
+            return "\(completedPages) / \(totalPages) ページを処理しました"
+        case .writing:
+            return "PDFファイルを書き込み中…"
+        case .completed:
+            return "完了しました"
+        }
+    }
+
+    static func preparing(totalPages: Int) -> PDFExportProgress {
+        PDFExportProgress(phase: .composing, completedPages: 0, totalPages: totalPages)
+    }
+}
+
 /// 複数のSourceItemから1つのPDFDocumentを合成するサービス
 enum PDFComposer {
 
@@ -9,33 +55,54 @@ enum PDFComposer {
 
     /// itemsの順番どおりにページを連結したPDFDocumentを生成する
     /// - Note: 重い処理なのでバックグラウンドスレッドから呼ぶこと
-    static func compose(items: [SourceItem], imagePageMode: ImagePageMode = .fitA4) -> PDFDocument {
+    static func compose(items: [SourceItem], imagePageMode: ImagePageMode = .original) -> PDFDocument {
         compositionQueue.sync {
             composeOnQueue(items: items, imagePageMode: imagePageMode)
         }
     }
 
     /// compositionQueue上で実際の合成処理を行う
-    private static func composeOnQueue(items: [SourceItem], imagePageMode: ImagePageMode) -> PDFDocument {
+    private static func composeOnQueue(
+        items: [SourceItem],
+        imagePageMode: ImagePageMode,
+        pageProgress: ((_ completedPages: Int, _ totalPages: Int) -> Void)? = nil
+    ) -> PDFDocument {
         let document = PDFDocument()
         var insertIndex = 0
+        var completedPages = 0
+        let totalPages = items.reduce(0) { $0 + $1.pageCount }
+
+        func advance(by count: Int = 1) {
+            completedPages = min(completedPages + count, totalPages)
+            pageProgress?(completedPages, totalPages)
+        }
 
         for item in items {
             switch item.kind {
             case .pdf:
-                guard let source = PDFDocument(url: item.url) else { continue }
+                guard let source = PDFDocument(url: item.url) else {
+                    advance(by: item.pageCount)
+                    continue
+                }
                 for pageIndex in 0..<source.pageCount {
-                    guard let page = source.page(at: pageIndex) else { continue }
-                    // 元ドキュメントに属するページはコピーしてから挿入する
-                    guard let copied = page.copy() as? PDFPage else { continue }
-                    document.insert(copied, at: insertIndex)
-                    insertIndex += 1
+                    if let page = source.page(at: pageIndex),
+                       let copied = page.copy() as? PDFPage {
+                        // 元ドキュメントに属するページはコピーしてから挿入する
+                        document.insert(copied, at: insertIndex)
+                        insertIndex += 1
+                    }
+                    advance()
+                }
+                if source.pageCount < item.pageCount {
+                    advance(by: item.pageCount - source.pageCount)
                 }
             case .image:
-                guard let image = NSImage(contentsOf: item.url),
-                      let page = imagePage(from: image, mode: imagePageMode) else { continue }
-                document.insert(page, at: insertIndex)
-                insertIndex += 1
+                if let image = NSImage(contentsOf: item.url),
+                   let page = imagePage(from: image, mode: imagePageMode) {
+                    document.insert(page, at: insertIndex)
+                    insertIndex += 1
+                }
+                advance()
             }
         }
 
@@ -46,13 +113,47 @@ enum PDFComposer {
     /// - Returns: 書き出しに成功したらtrue
     static func export(
         items: [SourceItem],
-        imagePageMode: ImagePageMode = .fitA4,
-        to url: URL
+        imagePageMode: ImagePageMode = .original,
+        to url: URL,
+        progress: (@Sendable (PDFExportProgress) -> Void)? = nil
     ) -> Bool {
         compositionQueue.sync {
-            let document = composeOnQueue(items: items, imagePageMode: imagePageMode)
+            let totalPages = items.reduce(0) { $0 + $1.pageCount }
+            progress?(.preparing(totalPages: totalPages))
+
+            let document = composeOnQueue(
+                items: items,
+                imagePageMode: imagePageMode
+            ) { completedPages, _ in
+                progress?(
+                    PDFExportProgress(
+                        phase: .composing,
+                        completedPages: completedPages,
+                        totalPages: totalPages
+                    )
+                )
+            }
+
             guard document.pageCount > 0 else { return false }
-            return document.write(to: url)
+            progress?(
+                PDFExportProgress(
+                    phase: .writing,
+                    completedPages: totalPages,
+                    totalPages: totalPages
+                )
+            )
+
+            let success = document.write(to: url)
+            if success {
+                progress?(
+                    PDFExportProgress(
+                        phase: .completed,
+                        completedPages: totalPages,
+                        totalPages: totalPages
+                    )
+                )
+            }
+            return success
         }
     }
 

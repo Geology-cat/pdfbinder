@@ -33,6 +33,26 @@ final class PDFBinderTests: XCTestCase {
         )
     }
 
+    @MainActor
+    func test複数ファイル追加時は名前昇順になる() throws {
+        let ten = try makeImageFile(name: "10.png", size: CGSize(width: 100, height: 100))
+        let two = try makeImageFile(name: "2.png", size: CGSize(width: 100, height: 100))
+        let one = try makeImageFile(name: "1.png", size: CGSize(width: 100, height: 100))
+        let viewModel = MergeListViewModel()
+
+        viewModel.addFiles(urls: [ten, two, one])
+
+        XCTAssertEqual(viewModel.items.map(\.fileName), ["1.png", "2.png", "10.png"])
+        viewModel.removeAll()
+    }
+
+    @MainActor
+    func test画像ページモードの初期値は原寸() {
+        let viewModel = MergeListViewModel()
+
+        XCTAssertEqual(viewModel.imagePageMode, .original)
+    }
+
     func test画像をA4ページへ変換する() throws {
         let imageURL = try makeImageFile(
             name: "横長.png",
@@ -55,11 +75,39 @@ final class PDFBinderTests: XCTestCase {
         )
         let item = try XCTUnwrap(SourceItem.make(from: imageURL))
 
-        let document = PDFComposer.compose(items: [item], imagePageMode: .original)
+        let document = PDFComposer.compose(items: [item])
 
         let bounds = try XCTUnwrap(document.page(at: 0)).bounds(for: .mediaBox)
         XCTAssertEqual(bounds.width, 320, accuracy: 0.1)
         XCTAssertEqual(bounds.height, 240, accuracy: 0.1)
+    }
+
+    func testPDF書き出しの進捗が単調に進み完了する() throws {
+        let sourcePDF = try makePDFFile(name: "2ページ.pdf", pageSizes: [
+            CGSize(width: 300, height: 400),
+            CGSize(width: 400, height: 500)
+        ])
+        let imageURL = try makeImageFile(
+            name: "末尾.png",
+            size: CGSize(width: 640, height: 480)
+        )
+        let items = try [sourcePDF, imageURL].map {
+            try XCTUnwrap(SourceItem.make(from: $0))
+        }
+        let outputURL = temporaryDirectory.appendingPathComponent("進捗確認.pdf")
+        let recorder = ProgressRecorder()
+
+        let success = PDFComposer.export(items: items, to: outputURL) { progress in
+            recorder.append(progress)
+        }
+        let updates = recorder.values
+
+        XCTAssertTrue(success)
+        XCTAssertEqual(updates.first, .preparing(totalPages: 3))
+        XCTAssertEqual(updates.last?.phase, .completed)
+        XCTAssertEqual(updates.last?.fractionCompleted, 1)
+        XCTAssertTrue(updates.contains { $0.phase == .writing })
+        XCTAssertEqual(updates.map(\.fractionCompleted), updates.map(\.fractionCompleted).sorted())
     }
 
     func testPDFと画像を指定順で結合して書き出す() throws {
@@ -126,5 +174,23 @@ final class PDFBinderTests: XCTestCase {
         ).fill()
         image.unlockFocus()
         return image
+    }
+}
+
+/// Sendableな進捗コールバックからテスト結果を安全に収集する
+private final class ProgressRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [PDFExportProgress] = []
+
+    var values: [PDFExportProgress] {
+        lock.lock()
+        defer { lock.unlock() }
+        return storage
+    }
+
+    func append(_ progress: PDFExportProgress) {
+        lock.lock()
+        storage.append(progress)
+        lock.unlock()
     }
 }

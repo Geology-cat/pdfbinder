@@ -24,8 +24,11 @@ final class MergeListViewModel: ObservableObject {
     /// PDF書き出し中かどうか
     @Published private(set) var isExporting = false
 
+    /// PDF書き出しの進行状況
+    @Published private(set) var exportProgress = PDFExportProgress.preparing(totalPages: 0)
+
     /// 画像をPDFへ変換するときのページサイズ
-    @Published var imagePageMode: ImagePageMode = .fitA4 {
+    @Published var imagePageMode: ImagePageMode = .original {
         didSet { schedulePreviewUpdate() }
     }
 
@@ -61,7 +64,10 @@ final class MergeListViewModel: ObservableObject {
             }
         }
 
-        items.append(contentsOf: added)
+        // ファイル選択APIやFinderから渡される順序には依存せず、
+        // 1回の操作で追加したファイルをFinderと同じ自然な名前順にそろえる。
+        // 追加済みファイルの手動並び替えは維持するため、新しいまとまりだけをソートする。
+        items.append(contentsOf: SortOption.nameAscending.sorted(added))
 
         if !skipped.isEmpty {
             errorMessage = "対応していない形式のためスキップしました：\n" + skipped.joined(separator: "\n")
@@ -152,13 +158,29 @@ final class MergeListViewModel: ObservableObject {
 
         let snapshot = items
         let imagePageMode = imagePageMode
+        exportProgress = .preparing(totalPages: totalPageCount)
         isExporting = true
         Task { [weak self] in
-            let success = await Task.detached(priority: .userInitiated) {
-                PDFComposer.export(items: snapshot, imagePageMode: imagePageMode, to: url)
-            }.value
-
             guard let self else { return }
+
+            let (progressStream, progressContinuation) = AsyncStream<PDFExportProgress>.makeStream()
+            let exportTask = Task.detached(priority: .userInitiated) {
+                let success = PDFComposer.export(
+                    items: snapshot,
+                    imagePageMode: imagePageMode,
+                    to: url
+                ) { progress in
+                    progressContinuation.yield(progress)
+                }
+                progressContinuation.finish()
+                return success
+            }
+
+            for await progress in progressStream {
+                self.exportProgress = progress
+            }
+
+            let success = await exportTask.value
             self.isExporting = false
             if success {
                 self.exportedFileURL = url

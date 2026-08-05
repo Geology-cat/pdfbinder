@@ -13,6 +13,15 @@ struct ContentView: View {
                 .frame(minWidth: 400, maxWidth: .infinity)
         }
         .toolbar { toolbarContent }
+        .sheet(
+            isPresented: Binding(
+                get: { viewModel.isExporting },
+                set: { _ in }
+            )
+        ) {
+            ExportProgressView(progress: viewModel.exportProgress)
+                .interactiveDismissDisabled()
+        }
         .alert(
             "エラー",
             isPresented: Binding(
@@ -98,5 +107,47 @@ struct ContentView: View {
             .disabled(viewModel.items.isEmpty || viewModel.isExporting)
             .help("結合したPDFを保存")
         }
+    }
+}
+
+/// PDF結合・書き出し中に表示する進捗ウインドウ
+private struct ExportProgressView: View {
+    let progress: PDFExportProgress
+
+    private var percentageText: String {
+        "\(Int((progress.fractionCompleted * 100).rounded()))%"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(spacing: 12) {
+                Image(systemName: "doc.on.doc.fill")
+                    .font(.title2)
+                    .foregroundStyle(.tint)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("PDFを作成中")
+                        .font(.headline)
+                    Text("結合と保存が終わるまでお待ちください。")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            ProgressView(value: progress.fractionCompleted, total: 1)
+                .progressViewStyle(.linear)
+
+            HStack {
+                Text(progress.statusText)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text(percentageText)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
+            .font(.subheadline)
+        }
+        .padding(28)
+        .frame(width: 420)
     }
 }
