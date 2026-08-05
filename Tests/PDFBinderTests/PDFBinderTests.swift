@@ -7,6 +7,7 @@ final class PDFBinderTests: XCTestCase {
     private var temporaryDirectory: URL!
 
     override func setUpWithError() throws {
+        PDFComposer.resetCachesForTesting()
         temporaryDirectory = FileManager.default.temporaryDirectory
             .appendingPathComponent("PDFBinderTests-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(
@@ -16,6 +17,7 @@ final class PDFBinderTests: XCTestCase {
     }
 
     override func tearDownWithError() throws {
+        PDFComposer.resetCachesForTesting()
         if let temporaryDirectory {
             try? FileManager.default.removeItem(at: temporaryDirectory)
         }
@@ -117,6 +119,145 @@ final class PDFBinderTests: XCTestCase {
         let bounds = try XCTUnwrap(document.page(at: 0)).bounds(for: .mediaBox)
         XCTAssertEqual(bounds.width, 320, accuracy: 0.1)
         XCTAssertEqual(bounds.height, 240, accuracy: 0.1)
+    }
+
+    func testプレビュー画像を縮小して原寸ページ寸法を維持する() throws {
+        let imageURL = try makeImageFile(
+            name: "大きな画像.png",
+            size: CGSize(width: 2400, height: 1800)
+        )
+        let item = try XCTUnwrap(SourceItem.make(from: imageURL))
+        let cancellationToken = PDFCompositionCancellationToken()
+        var observedPixelSizes: [CGSize] = []
+
+        let document = try XCTUnwrap(
+            PDFComposer.composePreview(
+                items: [item],
+                imagePageMode: .original,
+                maximumPixelSize: 512,
+                cancellationToken: cancellationToken
+            ) { pixelSize in
+                observedPixelSizes.append(pixelSize)
+            }
+        )
+
+        let bounds = try XCTUnwrap(document.page(at: 0)).bounds(for: .mediaBox)
+        XCTAssertEqual(bounds.width, 2400, accuracy: 0.1)
+        XCTAssertEqual(bounds.height, 1800, accuracy: 0.1)
+        let pixelSize = try XCTUnwrap(observedPixelSizes.first)
+        XCTAssertLessThanOrEqual(max(pixelSize.width, pixelSize.height), 512)
+    }
+
+    func testプレビュー用ページを同一条件でキャッシュする() throws {
+        let imageURL = try makeImageFile(
+            name: "キャッシュ.png",
+            size: CGSize(width: 1200, height: 900)
+        )
+        let item = try XCTUnwrap(SourceItem.make(from: imageURL))
+
+        XCTAssertNotNil(
+            PDFComposer.composePreview(
+                items: [item],
+                cancellationToken: PDFCompositionCancellationToken()
+            )
+        )
+        var statistics = PDFComposer.cacheStatistics()
+        XCTAssertEqual(statistics.previewMisses, 1)
+        XCTAssertEqual(statistics.previewHits, 0)
+
+        XCTAssertNotNil(
+            PDFComposer.composePreview(
+                items: [item],
+                cancellationToken: PDFCompositionCancellationToken()
+            )
+        )
+        statistics = PDFComposer.cacheStatistics()
+        XCTAssertEqual(statistics.previewMisses, 1)
+        XCTAssertEqual(statistics.previewHits, 1)
+    }
+
+    func testプレビュー合成をページ間でキャンセルする() throws {
+        let sourcePDF = try makePDFFile(name: "キャンセル.pdf", pageSizes: [
+            CGSize(width: 300, height: 400),
+            CGSize(width: 400, height: 500),
+            CGSize(width: 500, height: 600)
+        ])
+        let item = try XCTUnwrap(SourceItem.make(from: sourcePDF))
+        let cancellationToken = PDFCompositionCancellationToken()
+
+        let document = PDFComposer.composePreview(
+            items: [item],
+            cancellationToken: cancellationToken,
+            pageProgress: { completedPages, _ in
+                if completedPages == 1 {
+                    cancellationToken.cancel()
+                }
+            }
+        )
+
+        XCTAssertNil(document)
+    }
+
+    func test同一条件のPDF書き出しで完成データを再利用する() throws {
+        let imageURL = try makeImageFile(
+            name: "再利用.png",
+            size: CGSize(width: 640, height: 480)
+        )
+        let secondImageURL = try makeImageFile(
+            name: "再利用2.png",
+            size: CGSize(width: 480, height: 640)
+        )
+        let item = try XCTUnwrap(SourceItem.make(from: imageURL))
+        let secondItem = try XCTUnwrap(SourceItem.make(from: secondImageURL))
+        let items = [item, secondItem]
+        let firstURL = temporaryDirectory.appendingPathComponent("1回目.pdf")
+        let secondURL = temporaryDirectory.appendingPathComponent("2回目.pdf")
+        let changedURL = temporaryDirectory.appendingPathComponent("条件変更.pdf")
+        let reorderedURL = temporaryDirectory.appendingPathComponent("順序変更.pdf")
+
+        XCTAssertTrue(PDFComposer.export(items: items, to: firstURL))
+        var statistics = PDFComposer.cacheStatistics()
+        XCTAssertEqual(statistics.exportMisses, 1)
+        XCTAssertEqual(statistics.exportHits, 0)
+
+        XCTAssertTrue(PDFComposer.export(items: items, to: secondURL))
+        statistics = PDFComposer.cacheStatistics()
+        XCTAssertEqual(statistics.exportMisses, 1)
+        XCTAssertEqual(statistics.exportHits, 1)
+        XCTAssertEqual(try Data(contentsOf: firstURL), try Data(contentsOf: secondURL))
+
+        XCTAssertTrue(PDFComposer.export(items: items, imagePageMode: .fitA4, to: changedURL))
+        statistics = PDFComposer.cacheStatistics()
+        XCTAssertEqual(statistics.exportMisses, 2)
+
+        XCTAssertTrue(PDFComposer.export(items: Array(items.reversed()), to: reorderedURL))
+        statistics = PDFComposer.cacheStatistics()
+        XCTAssertEqual(statistics.exportMisses, 3)
+    }
+
+    func testプレビュー後の事前準備を最初のPDF保存で再利用する() throws {
+        let imageURL = try makeImageFile(
+            name: "事前準備.png",
+            size: CGSize(width: 800, height: 600)
+        )
+        let item = try XCTUnwrap(SourceItem.make(from: imageURL))
+        let outputURL = temporaryDirectory.appendingPathComponent("事前準備済み.pdf")
+
+        XCTAssertTrue(
+            PDFComposer.prepareExportCache(
+                items: [item],
+                cancellationToken: PDFCompositionCancellationToken()
+            )
+        )
+        var statistics = PDFComposer.cacheStatistics()
+        XCTAssertEqual(statistics.exportHits, 0)
+        XCTAssertEqual(statistics.exportMisses, 0)
+
+        XCTAssertTrue(PDFComposer.export(items: [item], to: outputURL))
+        statistics = PDFComposer.cacheStatistics()
+        XCTAssertEqual(statistics.exportHits, 1)
+        XCTAssertEqual(statistics.exportMisses, 0)
+        XCTAssertEqual(PDFDocument(url: outputURL)?.pageCount, 1)
     }
 
     func testPDF書き出しの進捗が単調に進み完了する() throws {

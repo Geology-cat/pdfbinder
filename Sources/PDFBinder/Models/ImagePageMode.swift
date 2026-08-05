@@ -1,7 +1,7 @@
 import Foundation
 
 /// 画像をPDFページへ変換するときのページサイズ
-enum ImagePageMode: String, CaseIterable, Identifiable {
+enum ImagePageMode: String, CaseIterable, Identifiable, Hashable, Sendable {
     case fitA4 = "A4に収める"
     case original = "原寸"
 

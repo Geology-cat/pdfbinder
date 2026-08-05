@@ -3,7 +3,7 @@ import UniformTypeIdentifiers
 import PDFKit
 
 /// 読み込んだファイルの種別
-enum SourceKind: String, Hashable {
+enum SourceKind: String, Hashable, Sendable {
     case image = "画像"
     case pdf = "PDF"
 
@@ -17,7 +17,7 @@ enum SourceKind: String, Hashable {
 }
 
 /// 結合対象の1ファイルを表すモデル
-struct SourceItem: Identifiable, Hashable {
+struct SourceItem: Identifiable, Hashable, Sendable {
     let id: UUID
     let url: URL
     let kind: SourceKind

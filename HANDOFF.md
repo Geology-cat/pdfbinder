@@ -17,6 +17,9 @@ macOSネイティブ（SwiftUI + PDFKit）の「画像・PDF結合アプリ」�
 - PDF結合・書き出しのページ単位進捗ウインドウを実装
 - 読み込んだファイルを一括で取り除く「すべてクリア」をツールバーへ追加
 - ソートメニューで現在選択中の項目へチェックマークを表示
+- ImageIOで画像を2048px以内へ縮小する高速プレビューを実装（書き出しは原寸品質）
+- プレビュー用1ページPDFのLRUキャッシュと協調キャンセルを実装
+- 書き出し開始時のプレビュー停止と、同一内容の完成PDFデータ再利用を実装
 - Intel Mac／Apple Silicon両対応のUniversal `.app` ビルドを実装
 - Info.plist、アプリアイコン、アドホック署名、起動確認まで完了
 
@@ -26,7 +29,7 @@ P3のページ編集・Undo/Redo・圧縮などは、完成条件には含めず
 ## 1. プロジェクト概要
 
 - **目的**: 複数の画像・PDFファイルを読み込み、自由に並び替えて1つのPDFに結合するMacアプリ
-- **技術スタック**: Swift 5 / SwiftUI / PDFKit / QuickLookThumbnailing / SwiftPM
+- **技術スタック**: Swift 5 / SwiftUI / PDFKit / ImageIO / QuickLookThumbnailing / SwiftPM
 - **対応OS**: macOS 14 (Sonoma) 以降
 - **ビルド確認済み環境**: Xcode 16.4, Swift 6.1.2（2026-07-14時点）
 
@@ -53,6 +56,7 @@ Sources/PDFBinder/
 │   └── MergeListViewModel.swift    # 唯一のViewModel。リスト管理・プレビュー生成・書き出し
 ├── Services/
 │   ├── PDFComposer.swift           # PDF合成ロジック（純粋関数的なenum）
+│   ├── PDFCompositionSupport.swift # 合成条件キー・キャンセルトークン・キャッシュ統計
 │   └── ThumbnailService.swift      # QuickLookによるサムネイル生成＋キャッシュ
 └── Views/
     ├── ContentView.swift           # ルート。HSplitView（左リスト／右プレビュー）＋ツールバー
@@ -63,15 +67,19 @@ Sources/PDFBinder/
 ### データフロー
 
 1. ファイル追加（`NSOpenPanel` または Finderからのドロップ）→ `SourceItem.make(from:)` で検証・生成
-2. `MergeListViewModel.items` の `didSet` → 300msデバウンス → バックグラウンドで `PDFComposer.compose` → `previewDocument` 更新 → `PDFKitView` が表示
-3. 「PDFを作成」→ `NSSavePanel` → 進捗ウインドウを表示しながらバックグラウンドで合成・書き出し → Finderで保存先を表示
+2. `MergeListViewModel.items` の `didSet` → 300msデバウンス → ImageIOで2048px以内へ縮小・キャッシュ → `PDFComposer.composePreview` → `previewDocument` 更新
+3. 並び替えなどで条件が変わると、旧プレビューへ協調キャンセルを通知して不要なページ処理を停止
+4. 「PDFを作成」→ 旧プレビューを停止 → 原寸品質で合成・書き出し。同一条件の完成データがあれば再合成せず保存
 
 ### 設計上の判断
 
 - **items配列の順序 = 結合順**。ソートは配列を並び替えるだけの操作なので、ソート後の手動ドラッグ並び替えも自然に可能（要件どおり）
 - **名前ソートは `localizedStandardCompare`**（Finderと同じ自然順。`2.png` < `10.png`）
 - **追加時の自動ソートは新しく追加したまとまりだけ**に適用し、既存ファイルの手動順序は維持
-- **プレビューは毎回フル再合成**。シンプルさ優先。大量ファイルで遅い場合は差分更新やページ上限を検討（後述）
+- **画像プレビューは2048px上限**。元のページ寸法を維持し、完成PDFだけ原寸画像から生成する
+- **プレビューキャッシュはURL・サイズ・更新日時・画像モード・解像度がキー**。LRU方式で合計128MBまで保持する
+- **完成PDFキャッシュは合成条件が完全一致した直前の1件のみ**。256MBを超えるPDFはメモリ保護のため保持しない
+- **PDFKit処理は直列のまま協調キャンセル**し、書き出し開始時に不要なプレビューを早期終了する
 - **PDFページは `copy()` してから挿入**（元ドキュメントとの所有権問題を回避）
 - 画像は `PDFPage(image:)` でそのままページ化（画像サイズがそのままページサイズになる）
 
@@ -84,8 +92,8 @@ Sources/PDFBinder/
 | 対応形式判定（PDF + `UTType.image` 準拠全形式）・非対応スキップ通知 | 実装済み |
 | ドラッグによる手動並び替え（`onMove`） | 実装済み |
 | ソート6種（名前↑↓・更新日時↑↓・サイズ↑↓）、選択中チェック、ソート後の手動並び替え | 実装済み・自動テスト済み |
-| 結合PDFのライブプレビュー（デバウンス付き自動更新） | 実装済み |
-| PDF書き出し（保存パネル → Finder表示） | 実装済み |
+| 結合PDFの高速ライブプレビュー（縮小・LRUキャッシュ・協調キャンセル） | 実装済み・自動テスト済み |
+| PDF書き出し（保存パネル → Finder表示・同一内容の完成データ再利用） | 実装済み・自動テスト済み |
 | PDF結合・書き出しの進捗ウインドウ | 実装済み・自動テスト済み |
 | サムネイル表示（QuickLook、キャッシュ付き） | 実装済み |
 | 選択削除（ツールバー / Deleteキー）・すべてクリア | 実装済み・自動テスト済み |

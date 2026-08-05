@@ -47,6 +47,21 @@ final class MergeListViewModel: ObservableObject {
     /// プレビュー更新のデバウンス用タスク
     private var previewTask: Task<Void, Never>?
 
+    /// 同期的なPDF合成処理へキャンセル要求を伝えるトークン
+    private var previewCancellationToken: PDFCompositionCancellationToken?
+
+    /// 現在表示しているプレビューの合成条件
+    private var previewDocumentKey: PDFCompositionKey?
+
+    /// プレビュー確定後に原寸品質の完成PDFを事前準備するタスク
+    private var exportPreparationTask: Task<Void, Never>?
+
+    /// 完成PDFの事前準備へキャンセル要求を伝えるトークン
+    private var exportPreparationCancellationToken: PDFCompositionCancellationToken?
+
+    /// 現在事前準備している完成PDFの合成条件
+    private var exportPreparationKey: PDFCompositionKey?
+
     /// 結合後の合計ページ数
     var totalPageCount: Int {
         items.reduce(0) { $0 + $1.pageCount }
@@ -104,10 +119,13 @@ final class MergeListViewModel: ObservableObject {
 
     /// 読み込んだすべてのアイテムをリストからクリアする（元ファイルは削除しない）
     func clearAll() {
+        cancelPreviewGeneration()
+        cancelExportPreparation()
         items.removeAll()
         selection.removeAll()
         selectedSortOption = .nameAscending
         ThumbnailService.shared.clearCache()
+        PDFComposer.clearCaches()
     }
 
     // MARK: - 並び替え
@@ -128,29 +146,118 @@ final class MergeListViewModel: ObservableObject {
 
     /// items変更後に300msデバウンスしてプレビューを再生成する
     private func schedulePreviewUpdate() {
-        previewTask?.cancel()
+        cancelPreviewGeneration()
+        cancelExportPreparation()
 
         guard !items.isEmpty else {
             previewDocument = nil
+            previewDocumentKey = nil
             isGeneratingPreview = false
             return
         }
 
         let snapshot = items
+        let imagePageMode = imagePageMode
+        let compositionKey = PDFCompositionKey(
+            items: snapshot,
+            imagePageMode: imagePageMode
+        )
+        let cancellationToken = PDFCompositionCancellationToken()
+        previewCancellationToken = cancellationToken
+
         previewTask = Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(300))
-            guard let self, !Task.isCancelled else { return }
+            do {
+                try await Task.sleep(for: .milliseconds(300))
+            } catch {
+                return
+            }
+            guard let self,
+                  self.previewCancellationToken === cancellationToken,
+                  !cancellationToken.isCancelled else {
+                return
+            }
 
             self.isGeneratingPreview = true
-            let imagePageMode = self.imagePageMode
             let document = await Task.detached(priority: .userInitiated) {
-                PDFComposer.compose(items: snapshot, imagePageMode: imagePageMode)
+                PDFComposer.composePreview(
+                    items: snapshot,
+                    imagePageMode: imagePageMode,
+                    cancellationToken: cancellationToken
+                )
             }.value
 
-            guard !Task.isCancelled else { return }
-            self.previewDocument = document
+            guard self.previewCancellationToken === cancellationToken else { return }
+            self.previewTask = nil
+            self.previewCancellationToken = nil
             self.isGeneratingPreview = false
+
+            guard !cancellationToken.isCancelled,
+                  let document,
+                  self.currentCompositionKey == compositionKey else {
+                return
+            }
+            self.previewDocument = document
+            self.previewDocumentKey = compositionKey
+            self.startExportPreparation(
+                items: snapshot,
+                imagePageMode: imagePageMode,
+                compositionKey: compositionKey
+            )
         }
+    }
+
+    /// 待機中・実行中のプレビュー生成を協調的に停止する
+    private func cancelPreviewGeneration() {
+        previewTask?.cancel()
+        previewTask = nil
+        previewCancellationToken?.cancel()
+        previewCancellationToken = nil
+        isGeneratingPreview = false
+    }
+
+    /// 原寸品質の完成PDFを低優先度で事前準備する
+    private func startExportPreparation(
+        items: [SourceItem],
+        imagePageMode: ImagePageMode,
+        compositionKey: PDFCompositionKey
+    ) {
+        cancelExportPreparation()
+
+        let cancellationToken = PDFCompositionCancellationToken()
+        exportPreparationCancellationToken = cancellationToken
+        exportPreparationKey = compositionKey
+
+        let workerTask = Task.detached(priority: .utility) {
+            PDFComposer.prepareExportCache(
+                items: items,
+                imagePageMode: imagePageMode,
+                cancellationToken: cancellationToken
+            )
+        }
+        exportPreparationTask = Task { [weak self] in
+            _ = await workerTask.value
+            guard let self,
+                  self.exportPreparationCancellationToken === cancellationToken else {
+                return
+            }
+            self.exportPreparationTask = nil
+            self.exportPreparationCancellationToken = nil
+            self.exportPreparationKey = nil
+        }
+    }
+
+    /// 条件が変わった完成PDFの事前準備を停止する
+    private func cancelExportPreparation() {
+        exportPreparationTask?.cancel()
+        exportPreparationTask = nil
+        exportPreparationCancellationToken?.cancel()
+        exportPreparationCancellationToken = nil
+        exportPreparationKey = nil
+    }
+
+    /// 現在のファイル順・内容・画像モードを表す合成条件
+    private var currentCompositionKey: PDFCompositionKey {
+        PDFCompositionKey(items: items, imagePageMode: imagePageMode)
     }
 
     // MARK: - 書き出し
@@ -167,8 +274,14 @@ final class MergeListViewModel: ObservableObject {
 
         guard panel.runModal() == .OK, let url = panel.url else { return }
 
+        // 書き出しを古いプレビュー処理より優先する。
+        cancelPreviewGeneration()
         let snapshot = items
         let imagePageMode = imagePageMode
+        let exportKey = PDFCompositionKey(items: snapshot, imagePageMode: imagePageMode)
+        if exportPreparationKey != exportKey {
+            cancelExportPreparation()
+        }
         exportProgress = .preparing(totalPages: totalPageCount)
         isExporting = true
         Task { [weak self] in
@@ -198,6 +311,12 @@ final class MergeListViewModel: ObservableObject {
                 self.exportCompletionMessage = "「\(url.lastPathComponent)」を保存しました。"
             } else {
                 self.errorMessage = "PDFの書き出しに失敗しました。"
+            }
+
+            // 書き出し開始時に未完成のプレビューを止めた場合だけ再生成する。
+            if self.previewDocumentKey != self.currentCompositionKey,
+               self.previewCancellationToken == nil {
+                self.schedulePreviewUpdate()
             }
         }
     }
