@@ -126,6 +126,10 @@ hdiutil convert "${RW_DMG}" \
     -o "${FINAL_DMG}" >/dev/null
 
 hdiutil verify "${FINAL_DMG}" >/dev/null
-shasum -a 256 "${FINAL_DMG}" | tee "${CHECKSUM_FILE}"
+# ダウンロード後に同じフォルダでそのまま検証できるよう、絶対パスを記録しない。
+(
+    cd "${OUTPUT_DIR}"
+    shasum -a 256 "${FINAL_DMG:t}" | tee "${CHECKSUM_FILE:t}"
+)
 
 echo "DMG作成完了: ${FINAL_DMG}"
